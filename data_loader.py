@@ -1,7 +1,12 @@
 import pandas as pd
 import numpy as np
+import re
+import os
 
 EXCEL_FILE = "DARFOCAR-Physical and Financial Accomplishment Report.xlsx"
+TEST_EXCEL_FILE = "sample_excel_test_data.xlsx"
+DEFAULT_GSHEET_URL = "https://docs.google.com/spreadsheets/d/1qcO6y3BK-JPtPFJP5IaNn0eKra8Yxd0-g9ukRAISsEU/edit?usp=sharing"
+LOCAL_GSHEET_CSV = "google_sheets_dataset.csv"
 
 def clean_val(val):
     if pd.isna(val):
@@ -17,6 +22,9 @@ def load_pmed_fod_data(excel_path=EXCEL_FILE):
     Parses PMED and FOD sheets from DA-RFO CAR accomplishment report.
     Returns structured DataFrame for Physical & Financial targets/accomplishments.
     """
+    if not os.path.exists(excel_path):
+        return pd.DataFrame()
+        
     excel = pd.ExcelFile(excel_path)
     records = []
     
@@ -117,6 +125,9 @@ def load_rsbsa_data(excel_path=EXCEL_FILE):
     Parses VERIFIED_adjusted, NEW_adjusted, and UPDATED_adjusted sheets from DA-RFO CAR report.
     Returns structured DataFrame for RSBSA farmer/fisher registration stats.
     """
+    if not os.path.exists(excel_path):
+        return pd.DataFrame()
+
     excel = pd.ExcelFile(excel_path)
     records = []
     
@@ -192,8 +203,83 @@ def load_rsbsa_data(excel_path=EXCEL_FILE):
             
     return pd.DataFrame(records)
 
+
+def load_test_excel_all_sheets(excel_path=TEST_EXCEL_FILE):
+    """
+    Loads all sheets from the generated sample Excel test dataset.
+    """
+    if not os.path.exists(excel_path):
+        return {}
+    excel = pd.ExcelFile(excel_path)
+    sheets_data = {}
+    for sheet in excel.sheet_names:
+        sheets_data[sheet] = pd.read_excel(excel, sheet_name=sheet)
+    return sheets_data
+
+
+def load_custom_excel(file_or_path, sheet_name=None):
+    """
+    Generic loader for custom uploaded Excel files.
+    """
+    excel = pd.ExcelFile(file_or_path)
+    sheet_names = excel.sheet_names
+    
+    if sheet_name:
+        df = pd.read_excel(excel, sheet_name=sheet_name)
+        return sheet_names, df
+    else:
+        dfs = {s: pd.read_excel(excel, sheet_name=s) for s in sheet_names}
+        return sheet_names, dfs
+
+
+def parse_google_sheet_url(url=DEFAULT_GSHEET_URL, gid=None):
+    """
+    Converts various Google Sheets URL formats (editing link, share link, pubhtml)
+    into direct CSV export endpoints and returns a pandas DataFrame.
+    """
+    url = url.strip() if url else DEFAULT_GSHEET_URL
+    if not url:
+        raise ValueError("URL cannot be empty.")
+        
+    gid_match = re.search(r'[#&?]gid=([0-9]+)', url)
+    if gid_match and not gid:
+        gid = gid_match.group(1)
+        
+    doc_id_match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', url)
+    if not doc_id_match:
+        pub_match = re.search(r'/spreadsheets/d/e/([a-zA-Z0-9-_]+)', url)
+        if pub_match:
+            export_url = f"https://docs.google.com/spreadsheets/d/e/{pub_match.group(1)}/pub?output=csv"
+            if gid:
+                export_url += f"&gid={gid}"
+            return pd.read_csv(export_url)
+        else:
+            raise ValueError("Invalid Google Sheets URL format. Please enter a valid docs.google.com/spreadsheets URL.")
+            
+    doc_id = doc_id_match.group(1)
+    
+    export_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv"
+    if gid:
+        export_url += f"&gid={gid}"
+        
+    return pd.read_csv(export_url)
+
+
+def load_sample_google_sheet_data(csv_path=LOCAL_GSHEET_CSV):
+    """
+    Loads local Google Sheets dataset CSV file.
+    """
+    if os.path.exists(csv_path):
+        return pd.read_csv(csv_path)
+    if os.path.exists("sample_google_sheets_data.csv"):
+        return pd.read_csv("sample_google_sheets_data.csv")
+    return pd.DataFrame()
+
+
 if __name__ == "__main__":
     df_pmed = load_pmed_fod_data()
     print(f"PMED/FOD Loaded: {len(df_pmed)} rows")
     df_rsbsa = load_rsbsa_data()
     print(f"RSBSA Loaded: {len(df_rsbsa)} rows")
+    df_gsheet = parse_google_sheet_url()
+    print(f"Parsed Default Google Sheet Live URL: {len(df_gsheet)} rows")
