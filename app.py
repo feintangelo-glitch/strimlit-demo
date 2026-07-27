@@ -6,12 +6,12 @@ import plotly.graph_objects as go
 from datetime import datetime
 import os
 
-from generate_data import generate_sample_data
+from data_loader import load_pmed_fod_data, load_rsbsa_data
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Executive Sales Analytics Dashboard",
-    page_icon="📊",
+    page_title="DA-RFO CAR Accomplishment & RSBSA Dashboard",
+    page_icon="🌾",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -25,470 +25,353 @@ st.markdown("""
         padding-bottom: 2rem;
     }
     
-    /* Custom KPI Metric Cards */
+    /* DA CAR Executive KPI Metric Cards */
     .kpi-card {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
         border-radius: 12px;
-        padding: 20px;
+        padding: 18px 20px;
         color: #ffffff;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        text-align: left;
-        margin-bottom: 10px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        margin-bottom: 12px;
     }
     .kpi-title {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        color: #94a3b8;
-        margin-bottom: 6px;
+        color: #a7f3d0;
+        margin-bottom: 4px;
     }
     .kpi-value {
-        font-size: 1.8rem;
+        font-size: 1.75rem;
         font-weight: 700;
-        color: #f8fafc;
-        margin-bottom: 4px;
+        color: #ffffff;
+        margin-bottom: 2px;
     }
     .kpi-sub {
         font-size: 0.8rem;
         font-weight: 500;
     }
-    .text-positive { color: #10b981; }
-    .text-negative { color: #ef4444; }
-    .text-neutral { color: #3b82f6; }
+    .text-emerald { color: #34d399; }
+    .text-amber { color: #fbbf24; }
+    .text-blue { color: #60a5fa; }
     
-    /* Tab headers */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 8px 16px;
-        background-color: rgba(255, 255, 255, 0.03);
+    /* Header banner */
+    .header-banner {
+        background: linear-gradient(90deg, #047857 0%, #10b981 100%);
+        padding: 16px 24px;
+        border-radius: 12px;
+        color: white;
+        margin-bottom: 20px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-
-# --- DATA LOADING & CACHING ---
-DATA_FILE = "sales_data.csv"
-
+# --- LOAD DATA ---
 @st.cache_data
-def load_data(file_path):
-    if not os.path.exists(file_path):
-        df = generate_sample_data(num_records=3500, file_path=file_path)
-    else:
-        df = pd.read_csv(file_path)
-    
-    df["Order_Date"] = pd.to_datetime(df["Order_Date"])
-    return df
+def get_dashboard_data():
+    df_pmed = load_pmed_fod_data()
+    df_rsbsa = load_rsbsa_data()
+    return df_pmed, df_rsbsa
 
-df_raw = load_data(DATA_FILE)
+df_pmed, df_rsbsa = get_dashboard_data()
 
-# --- SIDEBAR FILTERS ---
-st.sidebar.image("https://img.icons8.com/color/96/dashboard-layout.png", width=64)
-st.sidebar.title("Dashboard Controls")
-st.sidebar.markdown("Filter sales performance data dynamically.")
+# --- SIDEBAR CONTROLS ---
+st.sidebar.image("https://img.icons8.com/color/96/sprout.png", width=64)
+st.sidebar.title("DA-RFO CAR Analytics")
+st.sidebar.caption("Cordillera Administrative Region")
 
-# Date Range Filter
-min_date = df_raw["Order_Date"].min().date()
-max_date = df_raw["Order_Date"].max().date()
-
-selected_dates = st.sidebar.date_input(
-    "Date Range",
-    value=[min_date, max_date],
-    min_value=min_date,
-    max_value=max_date
-)
-
-if isinstance(selected_dates, list) and len(selected_dates) == 2:
-    start_date, end_date = selected_dates
-else:
-    start_date, end_date = min_date, max_date
-
-# Region Filter
-all_regions = sorted(df_raw["Region"].unique().tolist())
-selected_regions = st.sidebar.multiselect(
-    "Regions",
-    options=all_regions,
-    default=all_regions
-)
-
-# Product Category Filter
-all_categories = sorted(df_raw["Product_Category"].unique().tolist())
-selected_categories = st.sidebar.multiselect(
-    "Product Categories",
-    options=all_categories,
-    default=all_categories
-)
-
-# Customer Segment Filter
-all_segments = sorted(df_raw["Customer_Segment"].unique().tolist())
-selected_segments = st.sidebar.multiselect(
-    "Customer Segments",
-    options=all_segments,
-    default=all_segments
-)
-
-# Shipping Status Filter
-all_statuses = sorted(df_raw["Shipping_Status"].unique().tolist())
-selected_statuses = st.sidebar.multiselect(
-    "Shipping Status",
-    options=all_statuses,
-    default=all_statuses
+view_mode = st.sidebar.radio(
+    "Select Dashboard View",
+    ["📊 Physical & Financial Accomplishments", "👨‍🌾 RSBSA Farmer & Fisher Registry"]
 )
 
 st.sidebar.markdown("---")
 
-# Data Regeneration Trigger
-with st.sidebar.expander("⚙️ Dataset Settings"):
-    st.write("Regenerate synthetic dataset with a custom sample size.")
-    num_samples = st.number_input("Number of Records", min_value=500, max_value=20000, value=3500, step=500)
-    if st.button("🔄 Generate New Data"):
-        generate_sample_data(num_records=int(num_samples), file_path=DATA_FILE)
-        st.cache_data.clear()
-        st.rerun()
+if view_mode == "📊 Physical & Financial Accomplishments":
+    st.sidebar.subheader("PPA Filters")
+    divisions = ["All"] + sorted(df_pmed["Division"].unique().tolist())
+    selected_div = st.sidebar.selectbox("Division", divisions)
+    
+    df_filtered_pmed = df_pmed.copy()
+    if selected_div != "All":
+        df_filtered_pmed = df_filtered_pmed[df_filtered_pmed["Division"] == selected_div]
+        
+    # --- HEADER ---
+    st.markdown("""
+        <div class="header-banner">
+            <h2 style="margin:0; padding:0; color:white;">🌾 Department of Agriculture - RFO CAR</h2>
+            <p style="margin:4px 0 0 0; font-size:1rem; opacity:0.9;">Physical and Financial Accomplishment Monitoring Dashboard</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # --- KPI METRICS ---
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    tot_p_target = df_filtered_pmed["Physical_Annual_Target"].sum()
+    tot_p_actual = df_filtered_pmed["Physical_Annual_Actual"].sum()
+    p_rate = (tot_p_actual / tot_p_target * 100) if tot_p_target > 0 else 0.0
+    
+    tot_ob_target = df_filtered_pmed["Obligation_Target_kPHP"].sum()
+    tot_ob_actual = df_filtered_pmed["Obligation_Actual_kPHP"].sum()
+    ob_rate = (tot_ob_actual / tot_ob_target * 100) if tot_ob_target > 0 else 0.0
+    
+    tot_disb_target = df_filtered_pmed["Disbursement_Target_kPHP"].sum()
+    tot_disb_actual = df_filtered_pmed["Disbursement_Actual_kPHP"].sum()
+    disb_rate = (tot_disb_actual / tot_disb_target * 100) if tot_disb_target > 0 else 0.0
+    
+    with col1:
+        st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Physical Target</div>
+                <div class="kpi-value">{tot_p_target:,.0f}</div>
+                <div class="kpi-sub text-emerald">Units / Deliverables</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with col2:
+        st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Physical Accomplished</div>
+                <div class="kpi-value">{tot_p_actual:,.0f}</div>
+                <div class="kpi-sub text-emerald">Rate: {p_rate:.1f}%</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with col3:
+        st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Obligation Target</div>
+                <div class="kpi-value">₱{tot_ob_target/1e3:.2f}M</div>
+                <div class="kpi-sub text-amber">₱{tot_ob_target:,.0f} K</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with col4:
+        st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Obligation Actual</div>
+                <div class="kpi-value">₱{tot_ob_actual/1e3:.2f}M</div>
+                <div class="kpi-sub text-amber">Rate: {ob_rate:.1f}%</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with col5:
+        st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Disbursement Actual</div>
+                <div class="kpi-value">₱{tot_disb_actual/1e3:.2f}M</div>
+                <div class="kpi-sub text-blue">Rate: {disb_rate:.1f}%</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- CHARTS ---
+    tab1, tab2 = st.tabs(["📊 Physical Performance", "💰 Financial Obligations & Disbursements"])
+    
+    with tab1:
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            st.subheader("Physical Accomplishment Rate (%) by Program / Activity")
+            fig_p = px.bar(
+                df_filtered_pmed,
+                x="Physical_Rate_Pct",
+                y="PPA_Name",
+                orientation="h",
+                text="Physical_Rate_Pct",
+                color="Physical_Rate_Pct",
+                color_continuous_scale="Greens",
+                labels={"Physical_Rate_Pct": "Accomplishment Rate (%)", "PPA_Name": "PPA / Activity"}
+            )
+            fig_p.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+            fig_p.update_layout(height=380, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
+            st.plotly_chart(fig_p, use_container_width=True)
+            
+        with c2:
+            st.subheader("Quarterly Target vs Actual Breakdown")
+            q_data = pd.DataFrame({
+                "Quarter": ["Q1", "Q2", "Q3", "Q4"],
+                "Target": [
+                    df_filtered_pmed["Physical_Target_Q1"].sum(),
+                    df_filtered_pmed["Physical_Target_Q2"].sum(),
+                    df_filtered_pmed["Physical_Target_Q3"].sum(),
+                    df_filtered_pmed["Physical_Target_Q4"].sum()
+                ],
+                "Actual": [
+                    df_filtered_pmed["Physical_Actual_Q1"].sum(),
+                    df_filtered_pmed["Physical_Actual_Q2"].sum(),
+                    df_filtered_pmed["Physical_Actual_Q3"].sum(),
+                    df_filtered_pmed["Physical_Actual_Q4"].sum()
+                ]
+            })
+            
+            fig_q = go.Figure()
+            fig_q.add_trace(go.Bar(x=q_data["Quarter"], y=q_data["Target"], name="Target", marker_color="#059669"))
+            fig_q.add_trace(go.Bar(x=q_data["Quarter"], y=q_data["Actual"], name="Actual", marker_color="#34d399"))
+            fig_q.update_layout(barmode="group", height=380, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
+            st.plotly_chart(fig_q, use_container_width=True)
+            
+    with tab2:
+        st.subheader("Financial Performance (in Thousands PHP)")
+        fig_fin = go.Figure()
+        fig_fin.add_trace(go.Bar(x=df_filtered_pmed["PPA_Name"], y=df_filtered_pmed["Obligation_Target_kPHP"], name="Obligation Target (₱ '000)", marker_color="#f59e0b"))
+        fig_fin.add_trace(go.Bar(x=df_filtered_pmed["PPA_Name"], y=df_filtered_pmed["Obligation_Actual_kPHP"], name="Obligation Actual (₱ '000)", marker_color="#fbbf24"))
+        fig_fin.add_trace(go.Bar(x=df_filtered_pmed["PPA_Name"], y=df_filtered_pmed["Disbursement_Actual_kPHP"], name="Disbursement Actual (₱ '000)", marker_color="#3b82f6"))
+        fig_fin.update_layout(barmode="group", height=400, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
+        st.plotly_chart(fig_fin, use_container_width=True)
+        
+    st.markdown("---")
+    st.subheader("Detailed Accomplishment Table")
+    st.dataframe(df_filtered_pmed, use_container_width=True, hide_index=True)
+    
+    csv_pmed = df_filtered_pmed.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Export PPA Report CSV",
+        data=csv_pmed,
+        file_name=f"DA_CAR_PPA_Accomplishment_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv"
+    )
 
-# --- FILTERING DATAFRAME ---
-mask = (
-    (df_raw["Order_Date"].dt.date >= start_date) &
-    (df_raw["Order_Date"].dt.date <= end_date) &
-    (df_raw["Region"].isin(selected_regions if selected_regions else all_regions)) &
-    (df_raw["Product_Category"].isin(selected_categories if selected_categories else all_categories)) &
-    (df_raw["Customer_Segment"].isin(selected_segments if selected_segments else all_segments)) &
-    (df_raw["Shipping_Status"].isin(selected_statuses if selected_statuses else all_statuses))
-)
+# =======================================================
+# VIEW 2: RSBSA FARMER & FISHER REGISTRATION ANALYTICS
+# =======================================================
+else:
+    st.sidebar.subheader("RSBSA Filters")
+    status_options = ["All"] + sorted(df_rsbsa["Status"].unique().tolist())
+    selected_status = st.sidebar.selectbox("Record Status", status_options)
+    
+    regions = ["All", "CAR Only"] + sorted(df_rsbsa["Region"].unique().tolist())
+    selected_region = st.sidebar.selectbox("Region Filter", regions)
+    
+    df_filtered_rsbsa = df_rsbsa.copy()
+    if selected_status != "All":
+        df_filtered_rsbsa = df_filtered_rsbsa[df_filtered_rsbsa["Status"] == selected_status]
+        
+    if selected_region == "CAR Only":
+        df_filtered_rsbsa = df_filtered_rsbsa[df_filtered_rsbsa["Region"].str.contains("CORDILLERA", case=False, na=False)]
+    elif selected_region != "All":
+        df_filtered_rsbsa = df_filtered_rsbsa[df_filtered_rsbsa["Region"] == selected_region]
 
-df_filtered = df_raw[mask]
-
-# --- HEADER SECTION ---
-st.title("📈 Executive Sales & Business Dashboard")
-st.caption(f"Showing performance metrics from **{start_date}** to **{end_date}** | Total Transactions Filtered: **{len(df_filtered):,}**")
-
-if df_filtered.empty:
-    st.warning("⚠️ No data available matching the selected filter criteria. Please adjust your filters in the sidebar.")
-    st.stop()
-
-# --- KPI METRICS SECTION ---
-col1, col2, col3, col4, col5, col6 = st.columns(6)
-
-total_revenue = df_filtered["Sales_Revenue"].sum()
-total_profit = df_filtered["Profit"].sum()
-avg_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
-total_orders = len(df_filtered)
-avg_order_val = total_revenue / total_orders if total_orders > 0 else 0
-avg_satisfaction = df_filtered["Satisfaction_Rating"].mean()
-
-with col1:
-    st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Total Revenue</div>
-            <div class="kpi-value">${total_revenue/1e6:.2f}M</div>
-            <div class="kpi-sub text-positive">↑ {total_revenue/1e3:,.0f}K Gross</div>
+    # --- HEADER ---
+    st.markdown("""
+        <div class="header-banner">
+            <h2 style="margin:0; padding:0; color:white;">🌾 RSBSA Farmer & Fisher Registry Analytics</h2>
+            <p style="margin:4px 0 0 0; font-size:1rem; opacity:0.9;">Registry System for Basic Sectors in Agriculture | DA-RFO CAR</p>
         </div>
     """, unsafe_allow_html=True)
 
-with col2:
-    st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Total Profit</div>
-            <div class="kpi-value">${total_profit/1e6:.2f}M</div>
-            <div class="kpi-sub text-positive">Net Income</div>
-        </div>
-    """, unsafe_allow_html=True)
+    # --- KPI METRICS ---
+    col1, col2, col3, col4 = st.columns(4)
+    
+    tot_2024 = df_filtered_rsbsa[df_filtered_rsbsa["Is_Province"]]["Total_2024"].sum()
+    tot_2025 = df_filtered_rsbsa[df_filtered_rsbsa["Is_Province"]]["Total_2025"].sum()
+    grand_tot = df_filtered_rsbsa[df_filtered_rsbsa["Is_Province"]]["Grand_Total"].sum()
+    
+    # CAR specific count
+    df_car = df_rsbsa[df_rsbsa["Region"].str.contains("CORDILLERA", case=False, na=False) & df_rsbsa["Is_Province"]]
+    car_tot = df_car["Grand_Total"].sum()
+    
+    with col1:
+        st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Grand Total Records</div>
+                <div class="kpi-value">{grand_tot:,}</div>
+                <div class="kpi-sub text-emerald">Verified & Registered</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with col2:
+        st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">CAR Region Records</div>
+                <div class="kpi-value">{car_tot:,}</div>
+                <div class="kpi-sub text-emerald">Cordillera Administrative</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with col3:
+        st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">2024 Total Records</div>
+                <div class="kpi-value">{tot_2024:,}</div>
+                <div class="kpi-sub text-amber">Prior Year Baseline</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with col4:
+        st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">2025 Total Records</div>
+                <div class="kpi-value">{tot_2025:,}</div>
+                <div class="kpi-sub text-blue">Current Year Progress</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("<br>", unsafe_allow_html=True)
 
-with col3:
-    st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Profit Margin</div>
-            <div class="kpi-value">{avg_margin:.1f}%</div>
-            <div class="kpi-sub text-neutral">Avg Return Rate</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col4:
-    st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Total Orders</div>
-            <div class="kpi-value">{total_orders:,}</div>
-            <div class="kpi-sub text-neutral">Transactions</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col5:
-    st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Avg Order Value</div>
-            <div class="kpi-value">${avg_order_val:,.0f}</div>
-            <div class="kpi-sub text-neutral">Per Transaction</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col6:
-    st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">Satisfaction</div>
-            <div class="kpi-value">⭐ {avg_satisfaction:.2f}</div>
-            <div class="kpi-sub text-positive">Out of 5.0</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# --- DASHBOARD TABS ---
-tab_overview, tab_products, tab_regions, tab_raw_data = st.tabs([
-    "📈 Executive Overview",
-    "🛍️ Product & Category Analysis",
-    "🌍 Regional & Customer Insights",
-    "🔍 Data Explorer & Export"
-])
-
-# ==========================================
-# TAB 1: EXECUTIVE OVERVIEW
-# ==========================================
-with tab_overview:
-    c1, c2 = st.columns([2, 1])
+    # --- CHARTS ---
+    c1, c2 = st.columns([3, 2])
     
     with c1:
-        st.subheader("Monthly Revenue & Profit Growth Trend")
+        st.subheader("CAR Province Registration Breakdown")
+        df_car_prov = df_filtered_rsbsa[df_filtered_rsbsa["Is_Province"] & df_filtered_rsbsa["Region"].str.contains("CORDILLERA", case=False, na=False)]
+        df_car_sum = df_car_prov.groupby("Name")[["Total_2024", "Total_2025", "Grand_Total"]].sum().reset_index()
         
-        # Resample by Month
-        df_monthly = df_filtered.set_index("Order_Date").resample("MS")[["Sales_Revenue", "Profit"]].sum().reset_index()
-        df_monthly["Order_Date_Str"] = df_monthly["Order_Date"].dt.strftime("%b %Y")
-        
-        fig_trend = go.Figure()
-        fig_trend.add_trace(go.Scatter(
-            x=df_monthly["Order_Date_Str"],
-            y=df_monthly["Sales_Revenue"],
-            name="Revenue ($)",
-            mode="lines+markers",
-            fill='tozeroy',
-            line=dict(color="#3b82f6", width=3),
-            fillcolor="rgba(59, 130, 246, 0.1)"
-        ))
-        fig_trend.add_trace(go.Scatter(
-            x=df_monthly["Order_Date_Str"],
-            y=df_monthly["Profit"],
-            name="Profit ($)",
-            mode="lines+markers",
-            line=dict(color="#10b981", width=3)
-        ))
-        fig_trend.update_layout(
-            height=380,
-            margin=dict(l=20, r=20, t=30, b=20),
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            template="plotly_dark"
+        fig_car = px.bar(
+            df_car_sum,
+            x="Grand_Total",
+            y="Name",
+            orientation="h",
+            text_auto=",",
+            color="Grand_Total",
+            color_continuous_scale="Greens",
+            labels={"Grand_Total": "Registered Farmers / Fishers", "Name": "Province"}
         )
-        st.plotly_chart(fig_trend, use_container_width=True)
+        fig_car.update_layout(height=380, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
+        st.plotly_chart(fig_car, use_container_width=True)
 
     with c2:
-        st.subheader("Revenue Share by Category")
-        df_cat_share = df_filtered.groupby("Product_Category")["Sales_Revenue"].sum().reset_index()
+        st.subheader("Records by Status Type")
+        df_status_sum = df_rsbsa[df_rsbsa["Is_Province"]].groupby("Status")["Grand_Total"].sum().reset_index()
         
-        fig_pie = px.pie(
-            df_cat_share,
-            values="Sales_Revenue",
-            names="Product_Category",
+        fig_status = px.pie(
+            df_status_sum,
+            values="Grand_Total",
+            names="Status",
             hole=0.45,
-            color_discrete_sequence=px.colors.qualitative.Pastel
+            color_discrete_sequence=["#10b981", "#3b82f6", "#f59e0b"]
         )
-        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        fig_pie.update_layout(
-            height=380,
-            margin=dict(l=20, r=20, t=30, b=20),
-            showlegend=False,
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig_pie, use_container_width=True)
+        fig_status.update_layout(height=380, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
+        st.plotly_chart(fig_status, use_container_width=True)
 
     st.markdown("---")
     
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.subheader("Monthly Orders Count")
-        df_orders_monthly = df_filtered.set_index("Order_Date").resample("MS")["Order_ID"].count().reset_index()
-        df_orders_monthly["Order_Date_Str"] = df_orders_monthly["Order_Date"].dt.strftime("%b %Y")
-        
-        fig_orders = px.bar(
-            df_orders_monthly,
-            x="Order_Date_Str",
-            y="Order_ID",
-            labels={"Order_ID": "Number of Orders", "Order_Date_Str": "Month"},
-            color_discrete_sequence=["#8b5cf6"]
-        )
-        fig_orders.update_layout(height=300, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig_orders, use_container_width=True)
-        
-    with col_b:
-        st.subheader("Shipping Status Distribution")
-        df_status = df_filtered["Shipping_Status"].value_counts().reset_index()
-        df_status.columns = ["Status", "Count"]
-        
-        fig_status = px.bar(
-            df_status,
-            x="Status",
-            y="Count",
-            color="Status",
-            color_discrete_map={"Delivered": "#10b981", "Shipped": "#3b82f6", "Processing": "#f59e0b", "Cancelled": "#ef4444"}
-        )
-        fig_status.update_layout(height=300, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig_status, use_container_width=True)
-
-# ==========================================
-# TAB 2: PRODUCT & CATEGORY PERFORMANCE
-# ==========================================
-with tab_products:
-    p_col1, p_col2 = st.columns(2)
+    st.subheader("Monthly Registration Velocity (2025)")
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    monthly_vals = [df_filtered_rsbsa[df_filtered_rsbsa["Is_Province"]][m].sum() for m in months]
+    df_monthly = pd.DataFrame({"Month": months, "Registrations": monthly_vals})
     
-    with p_col1:
-        st.subheader("Top 10 Products by Sales Revenue")
-        df_top_prod = df_filtered.groupby("Product_Name")[["Sales_Revenue", "Profit", "Quantity"]].sum().reset_index()
-        df_top_prod = df_top_prod.sort_values(by="Sales_Revenue", ascending=True).tail(10)
-        
-        fig_top_prod = px.bar(
-            df_top_prod,
-            x="Sales_Revenue",
-            y="Product_Name",
-            orientation="h",
-            text_auto=".2s",
-            color="Profit",
-            color_continuous_scale="Viridis",
-            labels={"Sales_Revenue": "Sales Revenue ($)", "Product_Name": "Product"}
-        )
-        fig_top_prod.update_layout(height=420, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig_top_prod, use_container_width=True)
-
-    with p_col2:
-        st.subheader("Category Profitability Comparison")
-        df_cat_prof = df_filtered.groupby("Product_Category")[["Sales_Revenue", "Profit", "Cost"]].sum().reset_index()
-        df_cat_prof["Margin_Pct"] = round(df_cat_prof["Profit"] / df_cat_prof["Sales_Revenue"] * 100, 1)
-        
-        fig_cat_prof = go.Figure()
-        fig_cat_prof.add_trace(go.Bar(
-            x=df_cat_prof["Product_Category"], y=df_cat_prof["Sales_Revenue"], name="Revenue", marker_color="#3b82f6"
-        ))
-        fig_cat_prof.add_trace(go.Bar(
-            x=df_cat_prof["Product_Category"], y=df_cat_prof["Profit"], name="Profit", marker_color="#10b981"
-        ))
-        fig_cat_prof.update_layout(
-            barmode="group",
-            height=420,
-            template="plotly_dark",
-            margin=dict(l=20, r=20, t=30, b=20),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        st.plotly_chart(fig_cat_prof, use_container_width=True)
-
-    st.subheader("Discount vs Profit Margin Scatter Plot")
-    fig_scatter = px.scatter(
-        df_filtered,
-        x="Discount_Pct",
-        y="Profit",
-        size="Quantity",
-        color="Product_Category",
-        hover_data=["Order_ID", "Product_Name", "Customer_Segment"],
-        labels={"Discount_Pct": "Discount Percentage", "Profit": "Order Profit ($)"},
-        opacity=0.7
+    fig_m = px.area(
+        df_monthly,
+        x="Month",
+        y="Registrations",
+        markers=True,
+        line_shape="spline",
+        color_discrete_sequence=["#10b981"]
     )
-    fig_scatter.update_layout(height=350, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
-    st.plotly_chart(fig_scatter, use_container_width=True)
+    fig_m.update_layout(height=320, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
+    st.plotly_chart(fig_m, use_container_width=True)
 
-# ==========================================
-# TAB 3: REGIONAL & CUSTOMER INSIGHTS
-# ==========================================
-with tab_regions:
-    r_col1, r_col2 = st.columns(2)
+    st.markdown("---")
+    st.subheader("Detailed RSBSA Registry Data")
+    st.dataframe(df_filtered_rsbsa, use_container_width=True, hide_index=True)
     
-    with r_col1:
-        st.subheader("Regional Revenue Performance")
-        df_reg = df_filtered.groupby("Region")[["Sales_Revenue", "Profit"]].sum().reset_index().sort_values(by="Sales_Revenue", ascending=False)
-        
-        fig_reg = px.bar(
-            df_reg,
-            x="Region",
-            y="Sales_Revenue",
-            color="Region",
-            text_auto=".2s",
-            color_discrete_sequence=px.colors.qualitative.Vivid,
-            labels={"Sales_Revenue": "Revenue ($)"}
-        )
-        fig_reg.update_layout(height=380, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig_reg, use_container_width=True)
-
-    with r_col2:
-        st.subheader("Revenue by Customer Segment")
-        df_seg = df_filtered.groupby("Customer_Segment")[["Sales_Revenue", "Order_ID"]].agg({"Sales_Revenue": "sum", "Order_ID": "count"}).reset_index()
-        df_seg.rename(columns={"Order_ID": "Order_Count"}, inplace=True)
-        
-        fig_seg = px.treemap(
-            df_seg,
-            path=["Customer_Segment"],
-            values="Sales_Revenue",
-            color="Sales_Revenue",
-            color_continuous_scale="Blues",
-            labels={"Sales_Revenue": "Revenue ($)"}
-        )
-        fig_seg.update_layout(height=380, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
-        st.plotly_chart(fig_seg, use_container_width=True)
-
-    st.subheader("Country Breakdown within Selected Regions")
-    df_country = df_filtered.groupby(["Region", "Country"])[["Sales_Revenue", "Profit"]].sum().reset_index()
-    fig_country = px.bar(
-        df_country,
-        x="Country",
-        y="Sales_Revenue",
-        color="Region",
-        text_auto=".2s",
-        labels={"Sales_Revenue": "Revenue ($)"}
+    csv_rsbsa = df_filtered_rsbsa.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Export RSBSA Data CSV",
+        data=csv_rsbsa,
+        file_name=f"DA_CAR_RSBSA_Report_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv"
     )
-    fig_country.update_layout(height=380, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=20))
-    st.plotly_chart(fig_country, use_container_width=True)
-
-# ==========================================
-# TAB 4: RAW DATA EXPLORER & EXPORT
-# ==========================================
-with tab_raw_data:
-    st.subheader("Filtered Sales Transactions Table")
-    
-    # Search input
-    search_query = st.text_input("🔍 Search orders (Customer ID, Product Name, Order ID, etc.):", "")
-    
-    df_display = df_filtered.copy()
-    if search_query:
-        query = search_query.lower()
-        search_mask = (
-            df_display["Order_ID"].astype(str).str.lower().str.contains(query) |
-            df_display["Customer_ID"].astype(str).str.lower().str.contains(query) |
-            df_display["Product_Name"].astype(str).str.lower().str.contains(query) |
-            df_display["Country"].astype(str).str.lower().str.contains(query)
-        )
-        df_display = df_display[search_mask]
-        
-    st.dataframe(
-        df_display,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Order_Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
-            "Unit_Price": st.column_config.NumberColumn("Unit Price", format="$%.2f"),
-            "Sales_Revenue": st.column_config.NumberColumn("Sales Revenue", format="$%.2f"),
-            "Cost": st.column_config.NumberColumn("Cost", format="$%.2f"),
-            "Profit": st.column_config.NumberColumn("Profit", format="$%.2f"),
-            "Discount_Pct": st.column_config.NumberColumn("Discount", format="%.0f%%"),
-            "Satisfaction_Rating": st.column_config.NumberColumn("Rating", format="⭐ %d"),
-        }
-    )
-    
-    col_ex1, col_ex2 = st.columns([1, 4])
-    with col_ex1:
-        csv_data = df_display.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download CSV Report",
-            data=csv_data,
-            file_name=f"sales_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
-    with col_ex2:
-        st.caption(f"Exporting {len(df_display):,} records based on active filter selections.")
